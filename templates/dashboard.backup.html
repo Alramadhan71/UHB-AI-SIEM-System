@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIEM Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="db-body">
+
+<!-- ===== SIDEBAR ===== -->
+<nav class="sidebar" id="sidebar">
+  <div class="sb-logo">
+    <i class="fas fa-shield-halved"></i>
+    <span class="sb-logo-txt">SIEM</span>
+  </div>
+
+  <ul class="sb-nav">
+    <li class="sb-item active" id="nav-overview" onclick="showPage('overview')">
+      <i class="fas fa-chart-line"></i><span>Overview</span>
+    </li>
+    <li class="sb-item" id="nav-alerts" onclick="showPage('alerts')">
+      <i class="fas fa-bell"></i><span>Alerts</span>
+      <span class="sb-badge" id="badge-alerts">0</span>
+    </li>
+    <li class="sb-item" id="nav-agents" onclick="showPage('agents')">
+      <i class="fas fa-server"></i><span>Agents</span>
+    </li>
+    <li class="sb-item" id="nav-rules" onclick="showPage('rules')">
+      <i class="fas fa-shield-virus"></i><span>Rules</span>
+    </li>
+    <li class="sb-item" id="nav-assistant" onclick="showPage('assistant')">
+      <i class="fas fa-robot"></i><span>AI Assistant</span>
+    </li>
+    <li class="sb-item" id="nav-users" onclick="showPage('users')" {% if role != 'admin' %}style="display:none"{% endif %}>
+      <i class="fas fa-users"></i><span>Users</span>
+    </li>
+  </ul>
+
+  <div class="sb-bottom">
+    <div class="sb-user">
+      <div class="sb-avatar">{{ username[0].upper() }}</div>
+      <div class="sb-user-info">
+        <span class="sb-uname">{{ username }}</span>
+        <span class="sb-role">{{ role }}</span>
+      </div>
+    </div>
+    <a href="/logout" class="sb-logout" title="Sign out">
+      <i class="fas fa-right-from-bracket"></i>
+    </a>
+  </div>
+</nav>
+
+<!-- ===== MAIN AREA ===== -->
+<div class="db-main">
+
+  <!-- Header -->
+  <header class="db-header">
+    <div class="db-header-left">
+      <button class="sb-toggle" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+      </button>
+      <nav class="breadcrumb">
+        <span class="bc-home"><i class="fas fa-house"></i></span>
+        <i class="fas fa-chevron-right bc-sep"></i>
+        <span class="bc-page" id="bc-current">Overview</span>
+      </nav>
+    </div>
+
+    <div class="db-header-center">
+      <div class="search-bar">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="text" placeholder="Search events, alerts, IPs..." id="globalSearch">
+      </div>
+    </div>
+
+    <div class="db-header-right">
+      <div class="time-badge">
+        <i class="fas fa-clock"></i>
+        <select id="timeRange" onchange="onTimeRangeChange()">
+          <option value="1">Last 1 hour</option>
+          <option value="6">Last 6 hours</option>
+          <option value="24" selected>Last 24 hours</option>
+          <option value="72">Last 3 days</option>
+          <option value="168">Last 7 days</option>
+        </select>
+      </div>
+      <button class="btn-refresh" id="refreshBtn" onclick="refreshAll()">
+        <i class="fas fa-rotate-right" id="refreshIcon"></i>
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== PAGE: OVERVIEW ===== -->
+  <div class="page active" id="page-overview">
+
+    <!-- KPI row -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-access"><i class="fas fa-key"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-num" id="kpi-access">—</div>
+          <div class="kpi-lbl">Security Events</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-threat"><i class="fas fa-skull-crossbones"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-num" id="kpi-threat">—</div>
+          <div class="kpi-lbl">High/Critical Alerts</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-audit"><i class="fas fa-shield-virus"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-num" id="kpi-audit">—</div>
+          <div class="kpi-lbl">Defender Events</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-endpoint"><i class="fas fa-terminal"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-num" id="kpi-endpoint">—</div>
+          <div class="kpi-lbl">PowerShell Events</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-total"><i class="fas fa-database"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-num" id="kpi-total">—</div>
+          <div class="kpi-lbl">Total Events</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle row: chart + map -->
+    <div class="mid-row">
+      <div class="card chart-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-chart-area"></i> Events over time</span>
+          <span class="card-meta" id="chart-meta"></span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="eventsChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card map-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-earth-americas"></i> Attacker Origin</span>
+          <span class="card-meta" id="map-meta"></span>
+        </div>
+        <div class="map-wrap">
+          <canvas id="attackerMap"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom row: summary table + donut -->
+    <div class="bot-row">
+      <div class="card table-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-list-check"></i> Alert Summary</span>
+        </div>
+        <div class="table-wrap">
+          <table class="siem-table">
+            <thead>
+              <tr>
+                <th class="col-rule">Rule / Threat</th>
+                <th class="col-sev">Severity</th>
+                <th class="col-cnt">Count</th>
+              </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card donut-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-chart-pie"></i> Log types volume</span>
+        </div>
+        <div class="donut-wrap">
+          <canvas id="logTypesChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Log Feed -->
+    <div class="card log-feed-card">
+      <div class="card-head">
+        <span class="card-title"><i class="fas fa-stream"></i> Live Log Feed</span>
+        <span class="card-meta" id="log-feed-meta"></span>
+      </div>
+      <div class="table-wrap log-feed-wrap">
+        <table class="siem-table log-feed-table">
+          <thead>
+            <tr>
+              <th style="width:140px">Time</th>
+              <th style="width:120px">Agent ID</th>
+              <th style="width:165px">Source Type</th>
+              <th style="width:80px">Event ID</th>
+              <th style="width:46px">Lvl</th>
+              <th style="width:150px">Host</th>
+              <th>Raw Log</th>
+              <th style="width:64px">Alert</th>
+            </tr>
+          </thead>
+          <tbody id="logFeedBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /page-overview -->
+
+  <!-- ===== PAGE: ALERTS ===== -->
+  <div class="page" id="page-alerts">
+    <div class="page-header">
+      <h2 class="page-title"><i class="fas fa-bell"></i> Alerts</h2>
+      <button class="btn-refresh" onclick="loadAlertsPage()">
+        <i class="fas fa-rotate-right"></i> Refresh
+      </button>
+    </div>
+    <div class="card" style="overflow:auto">
+      <table class="siem-table full-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Threat / Rule</th>
+            <th>Severity</th>
+            <th>Event ID</th>
+            <th>Time</th>
+            <th>Agent IP</th>
+            <th>Agent ID</th>
+            <th>Host</th>
+            <th>Source Type</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: AGENTS ===== -->
+  <div class="page" id="page-agents">
+    <div class="page-header">
+      <h2 class="page-title"><i class="fas fa-server"></i> Connected Agents</h2>
+      <button class="btn-refresh" onclick="loadAgentsPage()">
+        <i class="fas fa-rotate-right"></i> Refresh
+      </button>
+    </div>
+    <div class="card" style="overflow:auto">
+      <table class="siem-table full-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Agent ID</th>
+            <th>Hostname</th>
+            <th>IP Address</th>
+            <th>OS</th>
+            <th>Status</th>
+            <th>First Seen</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody id="agentsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: RULES ===== -->
+  <div class="page" id="page-rules">
+    <div class="page-header">
+      <h2 class="page-title"><i class="fas fa-shield-virus"></i> Detection Rules</h2>
+    </div>
+    <div class="card" style="overflow:auto">
+      <table class="siem-table full-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Rule Name</th>
+            <th>Condition Type</th>
+            <th>Severity</th>
+            <th>Active</th>
+          </tr>
+        </thead>
+        <tbody id="rulesBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: AI ASSISTANT ===== -->
+  <div class="page" id="page-assistant">
+    <div class="page-header">
+      <h2 class="page-title"><i class="fas fa-robot"></i> AI Assistant</h2>
+      <span class="ai-privacy-label">
+        <i class="fas fa-lock"></i> Local AI · LM Studio · No Cloud API
+      </span>
+    </div>
+
+    <div class="ai-grid">
+      <div class="card ai-status-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-microchip"></i> Local AI Status</span>
+          <button class="btn-refresh" onclick="loadAIStatus()">
+            <i class="fas fa-rotate-right"></i> Check
+          </button>
+        </div>
+        <div class="ai-status-body" id="aiStatusBody">
+          <div class="ai-status-line">
+            <span class="ai-dot ai-dot-pending" id="aiStatusDot"></span>
+            <span id="aiStatusText">Checking local AI…</span>
+          </div>
+          <div class="ai-status-meta" id="aiStatusMeta"></div>
+        </div>
+      </div>
+
+      <div class="card ai-ask-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-comments"></i> Ask the SOC Assistant</span>
+        </div>
+
+        <div class="ai-prompt-chips" id="aiPromptChips">
+          <button type="button" class="ai-chip" onclick="setAssistantQuestion('Explain latest alerts')">Explain latest alerts</button>
+          <button type="button" class="ai-chip" onclick="setAssistantQuestion('What should I investigate first?')">What should I investigate first?</button>
+          <button type="button" class="ai-chip" onclick="setAssistantQuestion('Summarize current SIEM activity')">Summarize current SIEM activity</button>
+          <button type="button" class="ai-chip" onclick="setAssistantQuestion('Give incident response steps')">Give incident response steps</button>
+        </div>
+
+        <textarea id="aiQuestion" class="ai-textarea" rows="4"
+          placeholder="Ask about recent alerts, suspicious hosts, IOCs, or response steps…"></textarea>
+
+        <div class="ai-ask-actions">
+          <button id="aiAskBtn" class="btn-primary" onclick="askAI()">
+            <i class="fas fa-paper-plane"></i> Ask
+          </button>
+          <span class="ai-note">
+            The assistant analyzes only recent SIEM alerts and logs provided by this dashboard.
+          </span>
+        </div>
+
+        <div class="ai-response" id="aiResponse">
+          <div class="ai-response-empty">
+            <i class="fas fa-comment-dots"></i> Response will appear here.
+          </div>
+        </div>
+      </div>
+
+      <div class="card ai-context-card">
+        <div class="card-head">
+          <span class="card-title"><i class="fas fa-database"></i> Recent SIEM Context Sent to AI</span>
+          <button class="btn-refresh" onclick="loadAIContext()">
+            <i class="fas fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <div class="ai-context-body" id="aiContextBody">
+          <div class="ai-context-loading">Loading context…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: USERS (admin only) ===== -->
+  <div class="page" id="page-users">
+    <div class="page-header">
+      <h2 class="page-title"><i class="fas fa-users"></i> User Management</h2>
+      <button class="btn-primary" onclick="document.getElementById('addUserModal').style.display='flex'">
+        <i class="fas fa-plus"></i> Add User
+      </button>
+    </div>
+    <div class="card" style="overflow:auto">
+      <table class="siem-table full-table">
+        <thead>
+          <tr>
+            <th>ID</th><th>Username</th><th>Email</th>
+            <th>Role</th><th>Active</th><th>Created</th><th>Last Login</th>
+          </tr>
+        </thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /db-main -->
+
+<!-- ===== ADD USER MODAL ===== -->
+<div class="modal-overlay" id="addUserModal" style="display:none" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3><i class="fas fa-user-plus"></i> Add New User</h3>
+      <button onclick="document.getElementById('addUserModal').style.display='none'">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+    <form id="addUserForm" onsubmit="submitNewUser(event)">
+      <div class="lc-field">
+        <label>Username *</label>
+        <input type="text" name="username" required placeholder="john_doe">
+      </div>
+      <div class="lc-field">
+        <label>Email</label>
+        <input type="email" name="email" placeholder="john@company.com">
+      </div>
+      <div class="lc-field">
+        <label>Password *</label>
+        <input type="password" name="password" required placeholder="Min 6 characters">
+      </div>
+      <div class="lc-field">
+        <label>Role</label>
+        <select name="role">
+          <option value="analyst">Analyst</option>
+          <option value="viewer">Viewer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel"
+          onclick="document.getElementById('addUserModal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn-primary">Create User</button>
+      </div>
+      <div class="modal-msg" id="modalMsg"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== RAW LOG MODAL ===== -->
+<div class="modal-overlay" id="rawLogModal" style="display:none" onclick="closeRawLogModal(event)">
+  <div class="modal-box raw-log-modal-box">
+    <div class="modal-head">
+      <h3><i class="fas fa-code"></i> Raw Windows Event XML</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-copy-raw" onclick="copyRawLog()" title="Copy to clipboard">
+          <i class="fas fa-copy"></i> Copy
+        </button>
+        <button onclick="document.getElementById('rawLogModal').style.display='none'">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+    <div class="raw-log-meta" id="rawLogMeta"></div>
+    <pre class="raw-log-content" id="rawLogContent"></pre>
+  </div>
+</div>
+
+<!-- ===== STATUS BAR ===== -->
+<div class="status-bar">
+  <span id="sb-last-update"></span>
+  <span class="sb-sep">|</span>
+  <span>Events: <strong id="sb-events">—</strong></span>
+  <span class="sb-sep">|</span>
+  <span>Alerts: <strong id="sb-alerts">—</strong></span>
+  <span class="sb-sep">|</span>
+  <span>Agents: <strong id="sb-agents">—</strong></span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.0/build/index.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

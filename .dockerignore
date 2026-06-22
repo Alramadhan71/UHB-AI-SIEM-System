@@ -1,0 +1,14 @@
+.git/
+__pycache__/
+*.py[cod]
+*.log
+*.err.log
+*.out.log
+.env
+.venv/
+venv/
+instance/
+*.db
+*.db-*
+v 4.2/
+
