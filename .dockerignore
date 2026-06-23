@@ -8,7 +8,7 @@ __pycache__/
 .venv/
 venv/
 instance/
+data/
 *.db
 *.db-*
 v 4.2/
-
