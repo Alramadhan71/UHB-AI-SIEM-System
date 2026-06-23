@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      HTTP_PORT: "5000"
+      SIEM_DB_FILE: /data/siem.db
+      SECRET_KEY: ${SECRET_KEY:-siem-secret-key-2024-change-in-production}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:5183:5000"
+      - "517:517/udp"
+      - "517:517/tcp"
+      - "518:518/udp"
+      - "518:518/tcp"
